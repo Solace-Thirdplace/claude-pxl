@@ -79,6 +79,9 @@ sheet("chars", ["slime*", "chest"], { pad: 1 })
   Give glowing things their own keys so nothing else lights up, or limit it with `where`.
 
 Full API with every option: [reference.md](reference.md).
+Minecraft textures (item icons, armour, Java/Blockbench model textures, skins): read
+[minecraft.md](minecraft.md) first. It has the `uvbox` layout op and `model3d`, which writes
+`out/_3d/<name>.png` (the texture on its model from every side); read that image after each build.
 Dynamic lighting (lamps, light blocked by solid layers, sky light, Terraria-style): read
 [lighting.md](lighting.md) only when a scene needs lights.
 

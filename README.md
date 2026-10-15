@@ -78,6 +78,7 @@ pxl build <art.px.js> [--out DIR] [--only a,b] [--scale N] [--no-preview]
 pxl serve <art.px.js> [--port 4321] [--out DIR | --no-out] [--no-preview]
 pxl ascii <art.px.js> <name>     print an asset as palette keys with x/y rulers
 pxl list  <art.px.js>            list assets, groups and sheets with source locations
+pxl view3d <model|item.png>      render a Java/Blockbench model, item or armour from every side
 ```
 
 `pxl` means `node bin/pxl.js` in a clone, or `npx github:crsolver/claude-pxl`. Art files can be `.js` or
@@ -94,6 +95,9 @@ pxl list  <art.px.js>            list assets, groups and sheets with source loca
 - **Scenes**: layers, cast-shadow and light layers, per-layer PNG export.
 - **Animation**: frames as patches over a base sprite → strips + JSON tags + GIF.
 - **Lighting** (optional): lamps, glow, normal-based relief (see [`lighting.md`](lighting.md)).
+- **Minecraft textures**: a `uvbox` op for the skin/armour box-UV layout, and `model3d` previews
+  that render textures on worn armour, Java and Blockbench models or extruded items, from every
+  side (see [`minecraft.md`](minecraft.md)).
 - **Errors** point at `file:line:col` and the asset/layer/op path, with "did you mean…" hints.
 
 Full API: [`reference.md`](reference.md). Agent workflow and essentials: [`SKILL.md`](SKILL.md).
@@ -101,7 +105,8 @@ Full API: [`reference.md`](reference.md). Agent workflow and essentials: [`SKILL
 ## Use it with an AI agent
 
 This repository is an agent skill: `SKILL.md` teaches the workflow (write → build → look at the
-preview → patch), `reference.md` holds the full API, and `lighting.md` is loaded only when needed.
+preview → patch), `reference.md` holds the full API, and `lighting.md` and `minecraft.md` are
+loaded only when needed.
 
 **Claude Code**: clone it into your skills folder, then ask Claude to draw something.
 

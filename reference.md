@@ -196,6 +196,18 @@ Animated sprites and scenes get `<name>.gif` next to their PNG (which shows fram
 `pxl ascii` prints every frame of an anim. The live viewer loops animated assets after the
 painting replay ends ("animate" toggle).
 
+## 3D previews (Minecraft)
+
+```js
+uvbox(u, v, w, h, d, { top, bottom, right, front, left, back })   // box-UV layout op
+model3d(name, { armor | java | bbmodel | item, textures?, pack?, turn?, scale? })
+```
+
+`uvbox` stamps one asset per face of a box-UV layout (skins, armour, entity textures) and checks
+each face's size. `model3d` renders textures on a humanoid wearing armour, a Java model, a
+Blockbench model or an extruded item to `out/_3d/<name>.png`; `pxl serve` shows it in 3D. Layout
+tables, options and examples: [minecraft.md](minecraft.md).
+
 ## CLI
 
 ```
@@ -203,6 +215,8 @@ node <pxl>/bin/pxl.js build <file> [--out DIR] [--only a,b] [--scale N] [--no-pr
 node <pxl>/bin/pxl.js serve <file> [--port 4321] [--out DIR | --no-out] [--no-preview]
 node <pxl>/bin/pxl.js ascii <file> <name>
 node <pxl>/bin/pxl.js list  <file>
+node <pxl>/bin/pxl.js view3d <model.json | model.bbmodel | item.png> [--pack DIR] [--texture k=f.png] [--turn N] [--views a,b] [--out DIR]
+node <pxl>/bin/pxl.js view3d <layer_1.png> [layer_2.png] --armor [--skin f.png | --no-skin]
 ```
 
 Outputs go to `<file dir>/out`: `sprites/<n>.png`, `scenes/<n>.png`, `<sheet>.png` + `<sheet>.json`

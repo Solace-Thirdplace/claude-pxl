@@ -20,7 +20,8 @@
     "examples/*.px.js",
     "SKILL.md",
     "reference.md",
-    "lighting.md"
+    "lighting.md",
+    "minecraft.md"
   ],
   "engines": {
     "node": ">=22.18"
@@ -48,10 +49,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/crsolver/claude-pxl.git"
+    "url": "git+https://github.com/Solace-Thirdplace/claude-pxl.git"
   },
-  "homepage": "https://github.com/crsolver/claude-pxl#readme",
+  "homepage": "https://github.com/Solace-Thirdplace/claude-pxl#readme",
   "bugs": {
-    "url": "https://github.com/crsolver/claude-pxl/issues"
+    "url": "https://github.com/Solace-Thirdplace/claude-pxl/issues"
   }
 }
