@@ -110,3 +110,17 @@ test("server: state, asset frames, rebuild on change", async () => {
     s.close();
   }
 });
+
+test("png: decode round-trips indexed and RGBA encodings", async () => {
+  const { decodePng } = await import("../src/node/png.ts");
+  const small = new Img(3, 2);
+  small.set(0, 0, pack(255, 0, 0));
+  small.set(2, 1, pack(0, 0, 255, 128));
+  assert.deepEqual([...decodePng(encodePng(small)).data], [...small.data]);
+  const big = new Img(20, 20);
+  for (let i = 0; i < 400; i++) big.data[i] = pack(i % 256, Math.floor(i / 256), 7, i % 3 ? 255 : 90);
+  const back = decodePng(encodePng(big));
+  assert.equal(back.w, 20);
+  assert.deepEqual([...back.data], [...big.data]);
+  assert.throws(() => decodePng(Buffer.from("nope"), "x.png"), /x\.png: not a PNG/);
+});
