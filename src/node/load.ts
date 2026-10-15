@@ -26,12 +26,14 @@ export function loadProject(file: string, opts: ProjectOptions = {}): Project {
     }
     p.addFile(abs);
     stack.push(abs);
+    p.currentFile = abs;
     try {
       vm.runInContext(compile(code, abs), ctx, { filename: abs });
     } catch (e) {
       throw syntaxAware(e, abs, p);
     } finally {
       stack.pop();
+      p.currentFile = stack[stack.length - 1];
     }
   };
   p.includeHook = (path) => run(isAbsolute(path) ? path : resolve(dirname(stack[stack.length - 1]), path));

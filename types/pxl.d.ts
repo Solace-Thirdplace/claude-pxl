@@ -79,6 +79,18 @@ declare global {
     lamp(x: number, y: number, opts?: PxLamp): void;
     bump(shape?: PxBumpShape, opts?: PxBump): void;
     normals(x: number, y: number, str: string): void;
+    uvbox(u: number, v: number, w: number, h: number, d: number, faces: PxUVBoxFaces): void;
+  }
+
+  /** Each face: an asset name or { name, ...placement }. Sizes: top/bottom w x d, front/back w x h, right/left d x h. */
+  type PxUVBoxFaces = Partial<Record<"top" | "bottom" | "right" | "front" | "left" | "back", string | (PxPlace & { name: string })>>;
+
+  /** Texture: a pxl asset name or a .png path relative to the art file. */
+  type PxTexRef = string;
+  interface PxModel3d {
+    armor?: { layer1?: PxTexRef; layer2?: PxTexRef; pieces?: ("helmet" | "chestplate" | "leggings" | "boots")[]; skin?: PxTexRef | false };
+    java?: string; bbmodel?: string; item?: PxTexRef | PxTexRef[];
+    textures?: Record<string, PxTexRef>; pack?: string | string[]; turn?: number; scale?: number;
   }
 
   function use(palette: "pico8" | "sweetie16" | "db16" | "endesga32" | "gray8" | (string | number)[]): void;
@@ -96,6 +108,8 @@ declare global {
   function group(name: string, members: string[]): void;
   function sheet(name: string, entries: string[], opts?: { cols?: number; pad?: number }): void;
   function include(path: string): void;
+  /** Preview textures on a 3D model: writes out/_3d/<name>.png (front, sides, back, top, 3/4 views). */
+  function model3d(name: string, opts: PxModel3d): void;
   function rng(seed?: number): () => number;
   function clip(where: PxRegion, ...items: PxItem[]): PxOp;
 
@@ -127,6 +141,7 @@ declare global {
   function lamp(x: number, y: number, opts?: PxLamp): PxOp;
   function bump(shape?: PxBumpShape, opts?: PxBump): PxOp;
   function normals(x: number, y: number, str: string): PxOp;
+  function uvbox(u: number, v: number, w: number, h: number, d: number, faces: PxUVBoxFaces): PxOp;
   function lighting(opts?: PxLighting): PxOp;
   function glow(keys: string | string[], opts?: PxGlow): PxOp;
 }

@@ -5,7 +5,7 @@ import { PxError, didYouMean, wrap } from "./errors.ts";
 import type { Img } from "./image.ts";
 import {
   type AssetDef, type AssetKind, type AssetOpts, type GroupDef, type Item, type Layer, type LayerOpts, type Op,
-  type SheetDef, type SheetOpts, type Timeline, isLayer, isOp,
+  type Model3dDef, type SheetDef, type SheetOpts, type Timeline, isLayer, isOp,
 } from "./model.ts";
 import { Palette } from "./palette.ts";
 import { Trace } from "./trace.ts";
@@ -48,6 +48,7 @@ export const SIGNATURES: Record<string, string> = {
   normals: "x:n y:n str:s",
   lighting: "?opts:o",
   glow: "keys:S ?opts:o",
+  uvbox: "u:n v:n w:n h:n d:n faces:o",
 };
 
 /** Allowed option keys of ops whose last argument is an options object. */
@@ -56,6 +57,7 @@ const OP_OPTS: Record<string, string[]> = {
   bump: ["w", "depth", "on", "where"],
   lighting: ["cell", "ambient", "ambientColor", "sky", "skyColor", "skyReach", "block", "smooth", "emit", "shape", "relief", "skyDir"],
   glow: ["where", "r", "strength", "color", "bands", "ramp"],
+  uvbox: ["top", "bottom", "right", "front", "left", "back"],
 };
 
 const ASSET_OPTS: Record<AssetKind, string[]> = {
@@ -68,6 +70,9 @@ const FRAME_OPTS = ["ms", "hold"];
 const MAX_LOOP = 60000;
 const LAYER_OPTS = ["x", "y", "hidden", "shade", "light", "density", "solid", "wall", "unlit"];
 const SHEET_OPTS = ["cols", "pad"];
+const MODEL3D_OPTS = ["armor", "java", "bbmodel", "item", "textures", "pack", "turn", "scale"];
+const MODEL3D_SOURCES = ["armor", "java", "bbmodel", "item"];
+const ARMOR_OPTS = ["layer1", "layer2", "pieces", "skin"];
 
 function checkArgs(name: string, args: unknown[]): void {
   const sig = SIGNATURES[name];
@@ -132,11 +137,14 @@ export class Project implements BuildCtx {
   readonly order: string[] = [];
   readonly groups = new Map<string, GroupDef>();
   readonly sheets: SheetDef[] = [];
+  readonly models3d: Model3dDef[] = [];
   /** Art files loaded so far (absolute paths or virtual names), for locations and watching. */
   readonly files: string[] = [];
   pal: Palette = Palette.builtin("pico8");
   /** Set by a loader to support include(). */
   includeHook?: (path: string) => void;
+  /** Art file currently running (set by the loader), so model3d paths resolve from it. */
+  currentFile?: string;
 
   private cache = new Map<string, BuildOut>();
   /** Timelines gathered from animated assets placed by the builds in progress (innermost last). */
@@ -233,6 +241,21 @@ export class Project implements BuildCtx {
       if (typeof name !== "string" || !Array.isArray(entries)) throw new PxError('sheet("name", ["a", "b*"], { cols, pad })', loc);
       checkKeys(`sheet '${name}'`, opts, SHEET_OPTS, loc);
       this.sheets.push({ name, entries, opts, loc });
+    };
+    env.model3d = (name: unknown, opts: unknown) => {
+      const loc = this.callerLoc();
+      const usage = 'model3d("name", { armor | java | bbmodel | item, textures?, pack?, turn?, scale? })';
+      if (typeof name !== "string" || !name || !isPlainObject(opts)) throw new PxError(usage, loc);
+      if (this.assets.has(name) || this.models3d.some((m) => m.name === name))
+        throw new PxError(`'${name}' is already defined at ${(this.assets.get(name) ?? this.models3d.find((m) => m.name === name))!.loc}`, loc);
+      checkKeys(`model3d '${name}'`, opts, MODEL3D_OPTS, loc);
+      const sources = MODEL3D_SOURCES.filter((k) => opts[k] !== undefined);
+      if (sources.length !== 1) throw new PxError(`model3d '${name}': give exactly one of ${MODEL3D_SOURCES.join(", ")}${sources.length ? ` (got ${sources.join(", ")})` : ""}`, loc);
+      if (opts.armor !== undefined) {
+        if (!isPlainObject(opts.armor)) throw new PxError(`model3d '${name}': armor is { layer1, layer2, pieces, skin }`, loc);
+        checkKeys(`model3d '${name}' armor`, opts.armor, ARMOR_OPTS, loc);
+      }
+      this.models3d.push({ name, opts: opts as Model3dDef["opts"], loc, file: this.currentFile });
     };
     env.include = (path: unknown) => {
       if (typeof path !== "string") throw new PxError('include("other.px.js")', this.callerLoc());

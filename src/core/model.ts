@@ -242,3 +242,33 @@ export function isOp(v: unknown): v is Op {
 export function isLayer(v: unknown): v is Layer {
   return typeof v === "object" && v !== null && (v as Layer).__layer === true;
 }
+
+/** Texture reference in model3d: a pxl asset name, or a .png path relative to the art file. */
+export type TexRef = string;
+
+export interface Model3dOpts {
+  /** Worn armour on the humanoid model. */
+  armor?: { layer1?: TexRef; layer2?: TexRef; pieces?: ("helmet" | "chestplate" | "leggings" | "boots")[]; skin?: TexRef | false };
+  /** Java block/item model JSON (path relative to the art file). */
+  java?: string;
+  /** Blockbench project (path relative to the art file). */
+  bbmodel?: string;
+  /** Flat item extrusion of one sprite, or layer0, layer1, ... */
+  item?: TexRef | TexRef[];
+  /** Texture overrides: Java texture variables ("0", "layer0") or Blockbench texture names/indices. */
+  textures?: Record<string, TexRef>;
+  /** Resource-pack or ItemsAdder contents roots for parents and namespaced textures. */
+  pack?: string | string[];
+  /** Degrees to turn the model so its front faces the "front" view (180 for models built facing north). */
+  turn?: number;
+  /** Screen pixels per model unit in out/_3d (default: fits the model). */
+  scale?: number;
+}
+
+export interface Model3dDef {
+  name: string;
+  opts: Model3dOpts;
+  loc?: string;
+  /** Art file that declared it; relative paths resolve from its folder. */
+  file?: string;
+}

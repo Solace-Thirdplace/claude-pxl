@@ -7,6 +7,7 @@ import type { Project } from "../core/project.ts";
 import { type FrameTag, packSheet, preview, previewScale, sheetJson } from "../core/render.ts";
 import { normalImage } from "../core/normals.ts";
 import { encodeGif } from "./gif.ts";
+import { buildModel3d, renderModel3d } from "./model3d.ts";
 import { encodePng } from "./png.ts";
 
 export interface OutputOptions {
@@ -35,11 +36,11 @@ export function writePng(path: string, img: Img): void {
 /** Build and write. Each asset fails independently; errors are collected, not thrown. */
 export function writeOutputs(p: Project, out: string, opts: OutputOptions = {}): OutputResult {
   const lines: string[] = [], errors: PxError[] = [];
-  const sheetNames = new Set(p.sheets.map((s) => s.name));
+  const sheetNames = new Set([...p.sheets.map((s) => s.name), ...p.models3d.map((m) => m.name)]);
   if (opts.only)
     for (const n of opts.only)
       if (!p.assets.has(n) && !sheetNames.has(n))
-        errors.push(new PxError(`unknown asset or sheet '${n}'${didYouMean(n, [...p.order, ...sheetNames])}`));
+        errors.push(new PxError(`unknown asset, sheet or model3d '${n}'${didYouMean(n, [...p.order, ...sheetNames])}`));
 
   const want = opts.only ? new Set(opts.only) : undefined;
   const prev = (name: string, img: Img): string => {
@@ -104,6 +105,20 @@ export function writeOutputs(p: Project, out: string, opts: OutputOptions = {}):
       lines.push(`sheet ${s.name} ${sheet.w}x${sheet.h} (${frames.length} frames)${prev(s.name, sheet)}`);
     } catch (e) {
       errors.push(wrap(e).within(`sheet '${s.name}'`, s.loc));
+    }
+  }
+
+  for (const m of p.models3d) {
+    if (want && !want.has(m.name)) continue;
+    try {
+      // 3D previews: every fixed angle on one sheet, already at viewing size.
+      const b = buildModel3d(p, m);
+      const s = renderModel3d(b);
+      writePng(join(out, "_3d", m.name + ".png"), s.img);
+      lines.push(`model3d ${m.name} ${s.img.w}x${s.img.h} (${b.model.quads.length} faces) -> _3d/${m.name}.png`);
+      for (const w of b.model.warnings) lines.push(`  warning: ${w}`);
+    } catch (e) {
+      errors.push(wrap(e));
     }
   }
   return { lines, errors };

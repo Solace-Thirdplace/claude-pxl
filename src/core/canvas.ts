@@ -368,6 +368,28 @@ export class Canvas {
     this.put(this.asset(name, opts, x, y), x, y);
   }
 
+  /**
+   * Box-UV layout (Minecraft skins, armour, entity and Blockbench box-UV cubes) for a w x h x d box
+   * at (u, v): stamps one asset per face and checks it is the face's size. A face is an asset name
+   * or { name, ...placement }. The bottom face is stored with the box's back edge on its top row.
+   */
+  uvbox(u: number, v: number, w: number, h: number, d: number, faces: Partial<Record<UVBoxFace, string | (PlaceOpts & { name: string })>>): void {
+    const at: Record<UVBoxFace, [number, number, number, number]> = {
+      top: [u + d, v, w, d], bottom: [u + d + w, v, w, d],
+      right: [u, v + d, d, h], front: [u + d, v + d, w, h], left: [u + d + w, v + d, d, h], back: [u + 2 * d + w, v + d, w, h],
+    };
+    for (const face of UVBOX_FACES) {
+      const f = faces[face];
+      if (f === undefined) continue;
+      const { name, ...opts } = typeof f === "string" ? { name: f } : f;
+      if (typeof name !== "string") throw new PxError(`uvbox ${face}: give an asset name or { name, ...placement }`);
+      const [x, y, fw, fh] = at[face];
+      const img = this.asset(name, opts, x, y);
+      if (img.w !== fw || img.h !== fh) throw new PxError(`uvbox ${face} at ${x},${y} is ${fw}x${fh}, but '${name}' is ${img.w}x${img.h}`);
+      this.put(img, x, y);
+    }
+  }
+
   tile(name: string, x: number, y: number, cols = 1, rows = 1, opts?: PlaceOpts): void {
     const step = this.res.image(this.res.candidates(name)[0], 0);
     for (let r = 0; r < rows; r++)
@@ -530,8 +552,11 @@ export function frameStart(tl: Timeline, n: number): number {
 export const OPS = [
   "px", "rect", "box", "line", "hline", "vline", "ellipse", "circ", "ring", "poly", "fill",
   "dither", "grad", "noise", "recolor", "shade", "light",
-  "stamp", "tile", "pattern", "tilemap", "scatter", "grid", "wire", "text", "lamp", "bump", "normals",
+  "stamp", "tile", "pattern", "tilemap", "scatter", "grid", "wire", "text", "lamp", "bump", "normals", "uvbox",
 ] as const;
+
+export type UVBoxFace = "top" | "bottom" | "right" | "front" | "left" | "back";
+export const UVBOX_FACES: UVBoxFace[] = ["top", "bottom", "right", "front", "left", "back"];
 export type OpName = (typeof OPS)[number];
 
 // Wrap ops so only the outermost call reports to onOp (ring -> ellipse, text -> plot, ...).
