@@ -7,7 +7,7 @@ import { Img } from "../core/image.ts";
 import type { Model3dDef, Model3dOpts } from "../core/model.ts";
 import type { Project } from "../core/project.ts";
 import { type JavaResolver, type Model, bbModel, extrudeItem, humanoidModel, javaModel } from "../core/models/index.ts";
-import { type RenderOpts, VIEWS, type ViewSheet, bounds, renderViews } from "../core/raster3d.ts";
+import { type RenderOpts, type View, VIEWS, type ViewSheet, bounds, renderViews } from "../core/raster3d.ts";
 import { pack as packColor } from "../core/color.ts";
 import { decodePng } from "./png.ts";
 
@@ -177,8 +177,8 @@ export function autoScale(b: Built3d): number {
 export const VIEW_BG = packColor(40, 40, 48);
 
 /** The out/_3d sheet: every fixed view, turned so the model's front faces the "front" view. */
-export function renderModel3d(b: Built3d, opts: RenderOpts = {}): ViewSheet {
-  const views = VIEWS.map((v) => ({ ...v, yaw: v.yaw + b.turn }));
+export function renderModel3d(b: Built3d, only?: View[], opts: RenderOpts = {}): ViewSheet {
+  const views = (only ?? VIEWS).map((v) => ({ ...v, yaw: v.yaw + b.turn }));
   return renderViews(b.model.quads, views, { scale: b.scale ?? autoScale(b), bg: VIEW_BG, ...opts });
 }
 

@@ -1,9 +1,12 @@
 // pxl command line.
-import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { PxError, wrap } from "../core/errors.ts";
+import { VIEWS } from "../core/raster3d.ts";
 import { ascii } from "../core/render.ts";
 import { loadProject } from "./load.ts";
-import { writeOutputs } from "./output.ts";
+import { loadModel3d, readTexture, renderModel3d } from "./model3d.ts";
+import { writeOutputs, writePng } from "./output.ts";
 import { serve } from "./server.ts";
 
 const USAGE = `pxl — pixel-art DSL
@@ -17,6 +20,12 @@ const USAGE = `pxl — pixel-art DSL
       Print an asset as palette keys with x/y rulers (anims: every frame).
   pxl list  <art.px.js>
       List assets, groups and sheets with their source locations.
+  pxl view3d <model.json | model.bbmodel | item.png> [--texture key=file.png] [--pack DIR]
+             [--turn DEG] [--scale N] [--views front,back,...] [--out DIR (default: system temp)]
+  pxl view3d <layer_1.png> [layer_2.png] --armor [--skin skin.png | --no-skin]
+      Render any model + textures from every fixed angle to <out>/_3d/<name>.png. --pack points
+      at a resource pack or ItemsAdder contents folder for parents and namespaced textures
+      (repeatable); --texture overrides a texture variable or Blockbench texture (repeatable).
 
 Art files may be .js or .ts. Default out dir: <art file dir>/out.`;
 
@@ -29,10 +38,16 @@ interface Args {
   scale?: number;
   preview?: boolean;
   port?: number;
+  textures: [string, string][];
+  packs: string[];
+  turn?: number;
+  views?: string[];
+  armor?: boolean;
+  skin?: string | false;
 }
 
 function parse(argv: string[]): Args {
-  const a: Args = { rest: [] };
+  const a: Args = { rest: [], textures: [], packs: [] };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const val = () => {
@@ -46,6 +61,17 @@ function parse(argv: string[]): Args {
     else if (v === "--scale") a.scale = Number(val());
     else if (v === "--port") a.port = Number(val());
     else if (v === "--no-preview") a.preview = false;
+    else if (v === "--texture") {
+      const t = val(), i = t.indexOf("=");
+      if (i < 1) throw new PxError(`--texture wants key=file.png, got '${t}'`);
+      a.textures.push([t.slice(0, i), t.slice(i + 1)]);
+    }
+    else if (v === "--pack") a.packs.push(val());
+    else if (v === "--turn") a.turn = Number(val());
+    else if (v === "--views") a.views = val().split(",").map((s) => s.trim()).filter(Boolean);
+    else if (v === "--armor") a.armor = true;
+    else if (v === "--skin") a.skin = val();
+    else if (v === "--no-skin") a.skin = false;
     else if (v === "-h" || v === "--help") a.cmd = "help";
     else if (v.startsWith("--")) throw new PxError(`unknown flag ${v}\n\n${USAGE}`);
     else if (!a.cmd) a.cmd = v;
@@ -92,6 +118,34 @@ export async function main(argv: string[]): Promise<number> {
         }
         for (const g of p.groups.values()) console.log(`${"group".padEnd(6)} ${g.name.padEnd(24)} ${g.loc ?? ""}  [${g.members.join(" ")}]`);
         for (const s of p.sheets) console.log(`${"sheet".padEnd(6)} ${s.name.padEnd(24)} ${s.loc ?? ""}`);
+        return 0;
+      }
+      case "view3d": {
+        const base = process.cwd();
+        const files: string[] = [];
+        const abs = (f: string) => resolve(base, f);
+        const tex = (f: string) => { files.push(abs(f)); return readTexture(abs(f)); };
+        const textures = Object.fromEntries(a.textures.map(([k, f]) => [k, f]));
+        const opts = a.armor
+          ? { armor: { layer1: a.file, layer2: a.rest[0], skin: a.skin } }
+          : /\.bbmodel$/i.test(file) ? { bbmodel: file }
+          : /\.json$/i.test(file) ? { java: file }
+          : /\.png$/i.test(file) ? { item: [a.file, ...a.rest] }
+          : undefined;
+        if (!opts) throw new PxError("view3d takes a .json model, a .bbmodel, an item .png, or armour layers with --armor");
+        const name = basename(file).replace(/\.(json|bbmodel|png)$/i, "");
+        const b = loadModel3d(name, { ...opts, textures, pack: a.packs, turn: a.turn, scale: a.scale }, { texture: tex, base, files });
+        const views = a.views?.map((n) => {
+          const v = VIEWS.find((x) => x.name === n);
+          if (!v) throw new PxError(`unknown view '${n}' (views: ${VIEWS.map((x) => x.name).join(", ")})`);
+          return v;
+        });
+        const sheet = renderModel3d(b, views);
+        // Never default next to the input: it may sit in a live server or pack folder.
+        const dest = join(typeof a.out === "string" ? resolve(a.out) : join(tmpdir(), "pxl-view3d"), "_3d", name + ".png");
+        writePng(dest, sheet.img);
+        for (const w of b.model.warnings) console.log("warning: " + w);
+        console.log(`model3d ${name} ${sheet.img.w}x${sheet.img.h} (${b.model.quads.length} faces) -> ${dest}`);
         return 0;
       }
       case "serve": {

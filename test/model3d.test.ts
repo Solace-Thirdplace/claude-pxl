@@ -78,3 +78,21 @@ test("pack resolver: resource-pack and ItemsAdder layouts, parents, and .mcmeta 
   assert.equal(files.length, 2);
   assert.equal(readTexture(join(root, "assets/mypack/textures/item/glow.png")).h, 16);
 });
+
+test("cli view3d: renders an item PNG and armour layers to --out, rejects unknown views", async () => {
+  const { main } = await import("../src/node/cli.ts");
+  const dir = mkdtempSync(join(tmpdir(), "pxlv3d-"));
+  writeFileSync(join(dir, "gem.png"), encodePng(new Img(16, 16).fill(pack(10, 200, 90))));
+  writeFileSync(join(dir, "layer_1.png"), encodePng(new Img(64, 32).fill(pack(90, 90, 200))));
+  const log = console.log, err = console.error, said: string[] = [];
+  console.log = (s: string) => said.push(s);
+  console.error = (s: string) => said.push(s);
+  try {
+    assert.equal(await main(["view3d", join(dir, "gem.png"), "--out", join(dir, "o"), "--views", "front,top"]), 0);
+    assert.equal(await main(["view3d", join(dir, "layer_1.png"), "--armor", "--no-skin", "--out", join(dir, "o")]), 0);
+    assert.equal(await main(["view3d", join(dir, "gem.png"), "--views", "sideways"]), 1);
+  } finally { console.log = log; console.error = err; }
+  assert.ok(existsSync(join(dir, "o", "_3d", "gem.png")));
+  assert.ok(existsSync(join(dir, "o", "_3d", "layer_1.png")));
+  assert.match(said.join("\n"), /unknown view 'sideways'/);
+});
