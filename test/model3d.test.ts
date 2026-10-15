@@ -146,3 +146,11 @@ model3d("broken", { item: "missing.png" })`);
     s.close();
   }
 });
+
+test("examples/minecraft_armor builds every sprite, sheet and model3d without errors", () => {
+  const p = loadProject(join(import.meta.dirname, "..", "examples", "minecraft_armor.px.js"));
+  const r = writeOutputs(p, mkdtempSync(join(tmpdir(), "pxlex-")), { preview: false });
+  assert.deepEqual(r.errors.map((e) => e.message), []);
+  assert.equal(r.lines.filter((l) => l.startsWith("model3d ")).length, 4);
+  assert.ok(!r.lines.some((l) => l.includes("warning")));
+});
