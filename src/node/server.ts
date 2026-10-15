@@ -16,6 +16,8 @@ import { VIEWS } from "../core/raster3d.ts";
 
 export interface ServeOptions {
   port?: number;
+  /** Address to listen on (default 127.0.0.1). */
+  host?: string;
   /** Also write outputs (PNGs, previews) on every build; default `<file dir>/out`. false = off. */
   out?: string | false;
   preview?: boolean;
@@ -265,10 +267,11 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
 
   return new Promise((ok, fail) => {
     server.on("error", fail);
-    server.listen(opts.port ?? 4321, "127.0.0.1", () => {
+    const host = opts.host ?? "127.0.0.1";
+    server.listen(opts.port ?? 4321, host, () => {
       const addr = server.address();
       const port = typeof addr === "object" && addr ? addr.port : opts.port;
-      const url = `http://127.0.0.1:${port}/`;
+      const url = `http://${host.includes(":") ? `[${host}]` : host}:${port}/`;
       rebuild();
       ok({
         url,

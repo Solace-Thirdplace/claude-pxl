@@ -14,8 +14,9 @@ const USAGE = `pxl — pixel-art DSL
   pxl build <art.px.js> [--out DIR] [--only a,b] [--scale N] [--no-preview]
       Build PNGs (out/sprites, out/scenes, out/anims strips + JSON + GIF, sheets + JSON) and
       previews (out/_preview; animated assets also get a .gif).
-  pxl serve <art.px.js> [--port 4321] [--out DIR | --no-out] [--no-preview]
-      Live viewer: rebuilds on save and replays each asset's painting steps.
+  pxl serve <art.px.js> [--port 4321] [--host 127.0.0.1] [--out DIR | --no-out] [--no-preview]
+      Live viewer: rebuilds on save and replays each asset's painting steps. It has no auth:
+      put a password-protected proxy in front before binding anything but loopback.
   pxl ascii <art.px.js> <name>
       Print an asset as palette keys with x/y rulers (anims: every frame).
   pxl list  <art.px.js>
@@ -38,6 +39,7 @@ interface Args {
   scale?: number;
   preview?: boolean;
   port?: number;
+  host?: string;
   textures: [string, string][];
   packs: string[];
   turn?: number;
@@ -60,6 +62,7 @@ function parse(argv: string[]): Args {
     else if (v === "--only") a.only = val().split(",").map((s) => s.trim()).filter(Boolean);
     else if (v === "--scale") a.scale = Number(val());
     else if (v === "--port") a.port = Number(val());
+    else if (v === "--host") a.host = val();
     else if (v === "--no-preview") a.preview = false;
     else if (v === "--texture") {
       const t = val(), i = t.indexOf("=");
@@ -149,7 +152,7 @@ export async function main(argv: string[]): Promise<number> {
         return 0;
       }
       case "serve": {
-        const s = await serve(file, { port: a.port, out: a.out === false ? false : outDir, preview: a.preview });
+        const s = await serve(file, { port: a.port, host: a.host, out: a.out === false ? false : outDir, preview: a.preview });
         console.log(`pxl live viewer: ${s.url}  (watching ${file}; Ctrl+C to stop)`);
         return await new Promise<number>(() => {});
       }

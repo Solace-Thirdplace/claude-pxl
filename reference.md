@@ -212,7 +212,7 @@ tables, options and examples: [minecraft.md](minecraft.md).
 
 ```
 node <pxl>/bin/pxl.js build <file> [--out DIR] [--only a,b] [--scale N] [--no-preview]
-node <pxl>/bin/pxl.js serve <file> [--port 4321] [--out DIR | --no-out] [--no-preview]
+node <pxl>/bin/pxl.js serve <file> [--port 4321] [--host 127.0.0.1] [--out DIR | --no-out] [--no-preview]
 node <pxl>/bin/pxl.js ascii <file> <name>
 node <pxl>/bin/pxl.js list  <file>
 node <pxl>/bin/pxl.js view3d <model.json | model.bbmodel | item.png> [--pack DIR] [--texture k=f.png] [--turn N] [--views a,b] [--out DIR]
