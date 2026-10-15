@@ -96,3 +96,53 @@ test("cli view3d: renders an item PNG and armour layers to --out, rejects unknow
   assert.ok(existsSync(join(dir, "o", "_3d", "layer_1.png")));
   assert.match(said.join("\n"), /unknown view 'sideways'/);
 });
+
+test("server: model3d state and payload, browser core modules, rebuild when a texture file changes", async () => {
+  const { serve } = await import("../src/node/server.ts");
+  const dir = mkdtempSync(join(tmpdir(), "pxl3dsrv-"));
+  writeFileSync(join(dir, "skin.png"), encodePng(new Img(64, 32).fill(pack(90, 90, 200))));
+  const file = join(dir, "a.px.js");
+  writeFileSync(file, PAL + `
+sprite("plate", { w: 64, h: 32 }, rect(0, 0, 64, 32, "r"))
+model3d("worn", { armor: { layer1: "plate", skin: "skin.png" }, turn: 90 })
+model3d("broken", { item: "missing.png" })`);
+  const s = await serve(file, { port: 0, out: false, log: () => {} });
+  try {
+    const st = await (await fetch(s.url + "api/state")).json();
+    const worn = st.models3d.find((m: { name: string }) => m.name === "worn");
+    assert.deepEqual(worn.groups, ["body", "helmet", "chestplate", "boots"]);
+    assert.match(st.models3d.find((m: { name: string }) => m.name === "broken").error.message, /texture file not found/);
+    const m = await (await fetch(s.url + "api/model3d?name=worn")).json();
+    assert.equal(m.turn, 90);
+    assert.equal(m.textures.length, 2);
+    assert.equal(m.quads.length, worn.faces);
+    assert.equal((await fetch(s.url + "api/model3d?name=nope")).status, 404);
+    assert.equal((await fetch(s.url + "core/project.ts")).status, 404);
+
+    // The browser imports these four modules; the served code must be plain JS that runs.
+    const mods = join(dir, "core");
+    mkdirSync(mods);
+    for (const f of ["raster3d.ts", "color.ts", "font.ts", "image.ts"]) {
+      const r = await fetch(s.url + "core/" + f);
+      assert.equal(r.status, 200);
+      writeFileSync(join(mods, f.replace(/\.ts$/, ".mjs")), (await r.text()).replace(/from "\.\/(\w+)\.ts"/g, 'from "./$1.mjs"'));
+    }
+    const R = await import(join(mods, "raster3d.mjs"));
+    const img = R.render([{ p: [[0, 1, 0], [1, 1, 0], [1, 0, 0], [0, 0, 0]], uv: [[0, 0], [1, 0], [1, 1], [0, 1]], tex: new (await import(join(mods, "image.mjs"))).Img(1, 1).fill(pack(255, 0, 0)), shade: false }], { yaw: 0, pitch: 0 }, { scale: 2, w: 2, h: 2, center: [0.5, 0.5, 0] });
+    assert.equal(img.data[0], pack(255, 0, 0));
+    const app = await (await fetch(s.url + "app.js")).text();
+    assert.ok(app.includes("/core/raster3d.ts") && !app.includes("interface Model3dInfo"));
+
+    // Editing the skin PNG (not an art file) rebuilds and changes the model's hash.
+    writeFileSync(join(dir, "skin.png"), encodePng(new Img(64, 32).fill(pack(10, 200, 10))));
+    const t0 = Date.now();
+    let after = worn.hash;
+    while (Date.now() - t0 < 5000 && after === worn.hash) {
+      await new Promise((r) => setTimeout(r, 100));
+      after = (await (await fetch(s.url + "api/state")).json()).models3d[0].hash;
+    }
+    assert.notEqual(after, worn.hash, "texture edit did not rebuild the model");
+  } finally {
+    s.close();
+  }
+});

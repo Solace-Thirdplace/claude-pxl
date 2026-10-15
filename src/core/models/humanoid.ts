@@ -90,10 +90,12 @@ export function humanoidModel(o: HumanoidOpts): Model {
     const skin = o.skin ?? mannequinSkin();
     const skin64 = skin.h === skin.w;
     if (!skin64 && skin.w !== skin.h * 2) throw new PxError(`skin must be 64x64 or 64x32 (any scale), got ${skin.w}x${skin.h}`);
-    for (const part of ["head", "body", "rightArm", "leftArm", "rightLeg", "leftLeg"] as Part[]) quads.push(...partQuads(part, skin, 0, true, { skin64 }));
-    quads.push(...partQuads("hat", skin, 0.5, false, { skin64 }));
+    const body: Quad[] = [];
+    for (const part of ["head", "body", "rightArm", "leftArm", "rightLeg", "leftLeg"] as Part[]) body.push(...partQuads(part, skin, 0, true, { skin64 }));
+    body.push(...partQuads("hat", skin, 0.5, false, { skin64 }));
     if (skin64)
-      for (const part of ["body", "rightArm", "leftArm", "rightLeg", "leftLeg"] as Part[]) quads.push(...partQuads(part, skin, 0.25, false, { skin64, overlay: true }));
+      for (const part of ["body", "rightArm", "leftArm", "rightLeg", "leftLeg"] as Part[]) body.push(...partQuads(part, skin, 0.25, false, { skin64, overlay: true }));
+    for (const q of body) quads.push({ ...q, group: "body" });
   }
   const pieces = o.pieces ?? (Object.keys(PIECES) as ArmorPiece[]).filter((p) => (PIECES[p].layer === 1 ? o.layer1 : o.layer2));
   for (const piece of pieces) {
@@ -101,7 +103,7 @@ export function humanoidModel(o: HumanoidOpts): Model {
     const tex = layer === 1 ? o.layer1 : o.layer2;
     if (!tex) throw new PxError(`${piece} needs layer${layer}`);
     if (tex.w !== tex.h * 2) throw new PxError(`armour layer${layer} must be 64x32 (any scale), got ${tex.w}x${tex.h}`);
-    for (const part of parts) quads.push(...partQuads(part, tex, inflation(layer, part), false));
+    for (const part of parts) for (const q of partQuads(part, tex, inflation(layer, part), false)) quads.push({ ...q, group: piece });
   }
   return { quads, warnings: [] };
 }

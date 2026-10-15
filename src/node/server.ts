@@ -8,8 +8,11 @@ import { type PxError, wrap } from "../core/errors.ts";
 import type { BuildOut } from "../core/build.ts";
 import type { AssetDef } from "../core/model.ts";
 import type { Project } from "../core/project.ts";
+import { createHash } from "node:crypto";
 import { loadProject } from "./load.ts";
+import { type Built3d, autoScale, buildModel3d } from "./model3d.ts";
 import { writeOutputs } from "./output.ts";
+import { VIEWS } from "../core/raster3d.ts";
 
 export interface ServeOptions {
   port?: number;
@@ -39,6 +42,16 @@ interface ErrInfo {
   loc?: string;
 }
 
+interface Model3dInfo {
+  name: string;
+  faces?: number;
+  /** Changes whenever geometry or any texture changes. */
+  hash?: string;
+  groups?: string[];
+  warnings?: string[];
+  error?: ErrInfo;
+}
+
 interface State {
   version: number;
   file: string;
@@ -47,11 +60,30 @@ interface State {
   error?: ErrInfo;
   assets: AssetInfo[];
   sheets: string[];
+  models3d: Model3dInfo[];
   errors: ErrInfo[];
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
 const viewerDir = join(here, "..", "viewer");
+const coreDir = join(here, "..", "core");
+/** Core modules the viewer imports for 3D rendering (raster3d and what it imports). */
+const BROWSER_CORE = new Set(["raster3d.ts", "color.ts", "font.ts", "image.ts"]);
+
+/** Quads + deduplicated textures as JSON for the viewer. */
+function modelPayload(b: Built3d): string {
+  const texIndex = new Map<object, number>(), textures: { w: number; h: number; image: string }[] = [];
+  const quads = b.model.quads.map((q) => {
+    let t = texIndex.get(q.tex);
+    if (t === undefined) {
+      t = textures.length;
+      texIndex.set(q.tex, t);
+      textures.push({ w: q.tex.w, h: q.tex.h, image: b64(q.tex.data) });
+    }
+    return { p: q.p, uv: q.uv, t, cull: q.cull, shade: q.shade, group: q.group };
+  });
+  return JSON.stringify({ name: b.name, turn: b.turn, scale: b.scale ?? autoScale(b), views: VIEWS, warnings: b.model.warnings, textures, quads });
+}
 
 function errInfo(e: PxError): ErrInfo {
   return { message: e.message, loc: e.loc };
@@ -73,7 +105,8 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
   const log = opts.log ?? ((l: string) => console.log(l));
   const clients = new Set<ServerResponse>();
   let project: Project | undefined;
-  let state: State = { version: 0, file: basename(abs), time: "", ms: 0, assets: [], sheets: [], errors: [] };
+  let state: State = { version: 0, file: basename(abs), time: "", ms: 0, assets: [], sheets: [], models3d: [], errors: [] };
+  const models = new Map<string, string>();
   const hashes = new Map<string, string>();
   const fps = new Map<string, string>();
   let watched = new Set<string>();
@@ -86,7 +119,7 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
 
   const rebuild = () => {
     const t0 = performance.now();
-    const next: State = { version: state.version + 1, file: basename(abs), time: new Date().toLocaleTimeString(), ms: 0, assets: [], sheets: [], errors: [] };
+    const next: State = { version: state.version + 1, file: basename(abs), time: new Date().toLocaleTimeString(), ms: 0, assets: [], sheets: [], models3d: [], errors: [] };
     try {
       project = loadProject(abs, { trace: true });
     } catch (e) {
@@ -116,10 +149,32 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
         next.assets.push(info);
       }
       next.sheets = project.sheets.map((s) => s.name);
+      // 3D models: built here (not only in writeOutputs) so the viewer gets their quads and the
+      // watcher learns about model and texture files outside the art file.
+      models.clear();
+      const extra: string[] = [];
+      for (const def of project.models3d) {
+        const info: Model3dInfo = { name: def.name };
+        try {
+          const b = buildModel3d(project, def);
+          const payload = modelPayload(b);
+          models.set(def.name, payload);
+          extra.push(...b.files);
+          Object.assign(info, {
+            faces: b.model.quads.length, warnings: b.model.warnings,
+            hash: createHash("sha1").update(payload).digest("hex").slice(0, 16),
+            groups: [...new Set(b.model.quads.map((q) => q.group).filter((g): g is string => !!g))],
+          });
+        } catch (e) {
+          info.error = errInfo(wrap(e));
+        }
+        next.models3d.push(info);
+      }
+      project.files.push(...extra.filter((f) => !project!.files.includes(f)));
       if (out) {
         const r = writeOutputs(project, out, { preview: opts.preview });
         // asset failures are already listed per asset; keep the rest (sheets, unknown names)
-        next.errors = r.errors.filter((e) => !next.assets.some((a) => a.error?.message === e.message)).map(errInfo);
+        next.errors = r.errors.filter((e) => ![...next.assets, ...next.models3d].some((a) => a.error?.message === e.message)).map(errInfo);
       }
       watch(project.files);
     } else watch([abs]);
@@ -184,6 +239,14 @@ export function serve(file: string, opts: ServeOptions = {}): Promise<{ url: str
       } else if (url.pathname === "/api/state") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(state));
+      } else if (url.pathname === "/api/model3d") {
+        const m = models.get(url.searchParams.get("name") ?? "");
+        res.writeHead(m ? 200 : 404, { "content-type": "application/json" });
+        res.end(m ?? JSON.stringify({ error: "not found" }));
+      } else if (url.pathname.startsWith("/core/") && BROWSER_CORE.has(url.pathname.slice(6))) {
+        const src = readFileSync(join(coreDir, url.pathname.slice(6)), "utf8");
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+        res.end(stripTypeScriptTypes(src, { mode: "strip" }));
       } else if (url.pathname === "/api/asset") {
         const p = assetPayload(url.searchParams.get("name") ?? "", url.searchParams.get("frames") !== "0");
         res.writeHead(p ? 200 : 404, { "content-type": "application/json" });

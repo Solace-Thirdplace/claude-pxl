@@ -22,6 +22,8 @@ export interface Quad {
   cull?: boolean;
   /** Apply directional face shading (default true). */
   shade?: boolean;
+  /** Part name the viewer can toggle ("body", "helmet", ...). */
+  group?: string;
 }
 
 export interface Camera {

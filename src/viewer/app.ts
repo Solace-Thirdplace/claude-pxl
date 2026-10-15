@@ -2,7 +2,13 @@
 
 interface ErrInfo { message: string; loc?: string }
 interface AssetInfo { name: string; kind: string; part: boolean; w?: number; h?: number; hash?: string; steps?: number; changed: boolean; edited: boolean; error?: ErrInfo }
-interface State { version: number; file: string; time: string; ms: number; error?: ErrInfo; assets: AssetInfo[]; sheets: string[]; errors: ErrInfo[] }
+interface Model3dInfo { name: string; faces?: number; hash?: string; groups?: string[]; warnings?: string[]; error?: ErrInfo }
+interface State { version: number; file: string; time: string; ms: number; error?: ErrInfo; assets: AssetInfo[]; sheets: string[]; models3d?: Model3dInfo[]; errors: ErrInfo[] }
+type V3 = [number, number, number];
+interface Quad3 { p: V3[]; uv: [number, number][]; t: number; cull?: boolean; shade?: boolean; group?: string }
+interface ModelJ { name: string; turn: number; scale: number; views: { name: string; yaw: number; pitch: number }[]; warnings: string[]; textures: { w: number; h: number; image: string }[]; quads: Quad3[] }
+// deno-lint-ignore no-explicit-any
+type R3 = any;
 interface FrameJ { label: string; loc?: string; w: number; h: number; full?: string; changes?: string }
 interface AssetJ { name: string; kind: string; w: number; h: number; loc?: string; palette: Record<string, string>; layers: string[]; image: string; frames: FrameJ[]; anim?: { ms: number; image: string }[] }
 interface Frame { label: string; loc?: string; w: number; h: number; full?: Uint32Array; changes?: Uint32Array }
@@ -76,6 +82,7 @@ async function fetchAsset(name: string, frames: boolean): Promise<AssetJ | undef
 }
 
 async function select(name: string, opts: { play?: boolean; keepStep?: boolean } = {}): Promise<void> {
+  if (sel3d) exit3d();
   const info = state?.assets.find((a) => a.name === name);
   sel = name;
   localStorage.setItem("pxl.sel", name);
@@ -104,6 +111,123 @@ async function select(name: string, opts: { play?: boolean; keepStep?: boolean }
   renderPalette();
   setStep(step);
   if (opts.play) play(true);
+}
+
+// ---------------------------------------------------------------- 3D models
+// The same rasterizer as `pxl build`'s out/_3d sheets, imported from the server's core modules.
+
+let R: R3 | undefined, ImgC: R3 | undefined;
+async function raster(): Promise<R3> {
+  if (!R) {
+    R = await import("/core/raster3d.ts" as string);
+    ImgC = (await import("/core/image.ts" as string)).Img;
+  }
+  return R;
+}
+
+let sel3d: string | undefined;
+let m3d: { j: ModelJ; hash?: string; quads: R3[]; center: V3; radius: number } | undefined;
+let cam = { yaw: 35, pitch: 25 };
+let zoom3d = 1;
+const hiddenGroups = new Set<string>();
+
+async function loadModel(name: string): Promise<typeof m3d> {
+  const r = await fetch(`/api/model3d?name=${encodeURIComponent(name)}`);
+  if (!r.ok) return undefined;
+  const j = (await r.json()) as ModelJ;
+  const rr = await raster();
+  const texs = j.textures.map((t) => new ImgC(t.w, t.h, u32(t.image)));
+  const quads = j.quads.map((q) => ({ ...q, tex: texs[q.t] }));
+  const { min, max } = rr.bounds(quads);
+  const center: V3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+  const radius = Math.max(1, Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2);
+  return { j, quads, center, radius };
+}
+
+async function select3d(name: string, keepView = false): Promise<void> {
+  sel3d = name;
+  sel = undefined;
+  cur = undefined;
+  play(false);
+  localStorage.setItem("pxl.sel3d", name);
+  document.body.classList.add("mode3d");
+  if (!keepView) { cam = { yaw: 35, pitch: 25 }; zoom3d = 1; }
+  renderList();
+  const info = state?.models3d?.find((m) => m.name === name);
+  if (!info || info.error) { m3d = undefined; render3dPanel(); draw(); return; }
+  const m = await loadModel(name);
+  if (sel3d !== name) return;
+  m3d = m && { ...m, hash: info.hash };
+  render3dPanel();
+  draw();
+}
+
+function exit3d(): void {
+  sel3d = undefined;
+  m3d = undefined;
+  localStorage.removeItem("pxl.sel3d");
+  document.body.classList.remove("mode3d");
+}
+
+function render3dPanel(): void {
+  const bar = $("bar3d"), parts = $("parts3d"), warn = $("warn3d"), info = $("info3d");
+  bar.innerHTML = ""; parts.innerHTML = ""; warn.innerHTML = "";
+  const st = state?.models3d?.find((m) => m.name === sel3d);
+  info.textContent = st ? (st.error ? "error" : `${st.faces} faces`) : "";
+  if (!m3d) return;
+  for (const v of m3d.j.views) {
+    const b = document.createElement("button");
+    b.textContent = v.name;
+    b.onclick = () => { cam = { yaw: v.yaw, pitch: v.pitch }; draw(); };
+    bar.append(b);
+  }
+  for (const g of st?.groups ?? []) {
+    const l = document.createElement("label");
+    l.className = "tog";
+    l.innerHTML = `<input type="checkbox"${hiddenGroups.has(g) ? "" : " checked"}> <span></span>`;
+    (l.lastChild as HTMLElement).textContent = g;
+    (l.firstChild as HTMLInputElement).onchange = (e) => {
+      if ((e.target as HTMLInputElement).checked) hiddenGroups.delete(g); else hiddenGroups.add(g);
+      draw();
+    };
+    parts.append(l);
+  }
+  if (!st?.groups?.length) parts.textContent = "—";
+  for (const w of m3d.j.warnings) {
+    const li = document.createElement("li");
+    li.textContent = w;
+    warn.append(li);
+  }
+  if (!m3d.j.warnings.length) warn.innerHTML = "<li style='color:var(--dim)'>none</li>";
+}
+
+function draw3d(W: number, H: number, dpr: number): void {
+  if (!m3d || !R) { $("hud").textContent = sel3d ? `model3d ${sel3d}` : ""; return; }
+  // Render at CSS-pixel size with an integer scale (crisp texels), then blit up to device pixels.
+  const w = Math.max(1, Math.floor(W / dpr)), h = Math.max(1, Math.floor(H / dpr));
+  const fit = (Math.min(w, h) * 0.9) / (2 * m3d.radius);
+  const scale = Math.max(1, Math.round(fit * zoom3d));
+  const quads = m3d.quads.filter((q) => !q.group || !hiddenGroups.has(q.group));
+  const img = R.render(quads, { yaw: cam.yaw + m3d.j.turn, pitch: cam.pitch }, { scale, w, h, center: m3d.center });
+  const off = new OffscreenCanvas(w, h);
+  off.getContext("2d")!.putImageData(toImageData(img), 0, 0);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(off, 0, 0, w * dpr, h * dpr);
+  $("hud").textContent = `model3d ${m3d.j.name} · yaw ${Math.round(((cam.yaw % 360) + 360) % 360)}° pitch ${Math.round(cam.pitch)}° · ${scale}px/unit`;
+}
+
+const thumbs3d = new Map<string, { hash: string; img: ImageData }>();
+async function paintThumb3d(cv: HTMLCanvasElement, m: Model3dInfo): Promise<void> {
+  if (m.error || !m.hash) return;
+  let t = thumbs3d.get(m.name);
+  if (t?.hash !== m.hash) {
+    const md = await loadModel(m.name);
+    if (!md || !R) return;
+    const scale = Math.max(0.5, 30 / (2 * md.radius));
+    t = { hash: m.hash, img: toImageData(R.render(md.quads, { yaw: 35 + md.j.turn, pitch: 25 }, { scale, w: 32, h: 32, center: md.center })) };
+    thumbs3d.set(m.name, t);
+  }
+  cv.getContext("2d")!.putImageData(t.img, 0, 0);
 }
 
 // ---------------------------------------------------------------- list
@@ -144,6 +268,29 @@ function renderList(): void {
       row.onclick = () => select(a.name);
       box.append(row);
       paintThumb(cv, a);
+    }
+  }
+  const ms = (state.models3d ?? []).filter((m) => !q || m.name.toLowerCase().includes(q));
+  if (ms.length) {
+    const h = document.createElement("div");
+    h.className = "sect";
+    h.textContent = `3d models · ${ms.length}`;
+    box.append(h);
+    for (const m of ms) {
+      const row = document.createElement("div");
+      row.className = "row" + (m.name === sel3d ? " sel" : "");
+      const cv = document.createElement("canvas");
+      cv.width = 32; cv.height = 32;
+      cv.dataset.name = m.name;
+      cv.dataset.model = "1";
+      const meta = document.createElement("div");
+      meta.innerHTML = `<div class="nm"></div><div class="sz">${m.error ? "error" : `${m.faces} faces`}</div>`;
+      (meta.firstChild as HTMLElement).textContent = m.name;
+      row.append(cv, meta);
+      if (m.error) { const dot = document.createElement("span"); dot.className = "dot err"; row.append(dot); }
+      row.onclick = () => select3d(m.name);
+      box.append(row);
+      raster().then(() => paintThumb3d(cv, m));
     }
   }
 }
@@ -231,6 +378,7 @@ function draw(): void {
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, W, H);
   showError();
+  if (sel3d) return draw3d(W, H, dpr);
   if (!cur) { $("hud").textContent = ""; return; }
 
   const pic = animating() ? cur.anim[animAt].pic : picAt(cur, step);
@@ -293,7 +441,7 @@ function inspect(pic: Pic, ox: number, oy: number, z: number, dpr: number): void
 
 function showError(): void {
   const el = $("err");
-  const info = state?.assets.find((a) => a.name === sel);
+  const info = sel3d ? state?.models3d?.find((m) => m.name === sel3d) : state?.assets.find((a) => a.name === sel);
   const err = state?.error ?? info?.error ?? (state?.errors.length ? state.errors[0] : undefined);
   el.style.display = err ? "block" : "none";
   if (err) el.textContent = err.message;
@@ -367,6 +515,15 @@ function onBuild(s: State): void {
 
   const follow = ($<HTMLInputElement>("follow")).checked;
   const changed = s.assets.filter((a) => a.changed);
+  const want3d = first ? localStorage.getItem("pxl.sel3d") : sel3d;
+  if (want3d && s.models3d?.some((m) => m.name === want3d)) {
+    // Stay on the model while its textures are edited; refresh when anything it shows changed.
+    const info = s.models3d.find((m) => m.name === want3d)!;
+    if (first || info.hash !== m3d?.hash || info.error) select3d(want3d, !first);
+    else { render3dPanel(); draw(); }
+    return;
+  }
+  if (sel3d) exit3d();
   if (first) {
     const want = localStorage.getItem("pxl.sel");
     const pick = s.assets.find((a) => a.name === want) ?? s.assets.find((a) => a.kind === "scene") ?? s.assets.find((a) => !a.part) ?? s.assets[0];
@@ -400,6 +557,11 @@ for (const id of ["gridtog", "hl", "animtog"]) $(id).onchange = draw;
 const stage = $("stage");
 stage.addEventListener("wheel", (e) => {
   e.preventDefault();
+  if (sel3d) {
+    zoom3d = Math.max(0.25, Math.min(12, zoom3d * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+    draw();
+    return;
+  }
   if (!cur) return;
   const dpr = window.devicePixelRatio || 1;
   const pic = picAt(cur, step);
@@ -410,11 +572,21 @@ stage.addEventListener("wheel", (e) => {
   draw();
 }, { passive: false });
 let drag: { x: number; y: number; px: number; py: number } | undefined;
-stage.addEventListener("mousedown", (e) => { drag = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }; });
+stage.addEventListener("mousedown", (e) => {
+  drag = sel3d ? { x: e.clientX, y: e.clientY, px: cam.yaw, py: cam.pitch } : { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+});
+let pending = false;
+const drawSoon = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; draw(); }); } };
 window.addEventListener("mouseup", () => { drag = undefined; });
 stage.addEventListener("mousemove", (e) => {
   const r = stage.getBoundingClientRect();
   hover = { x: e.clientX - r.left, y: e.clientY - r.top };
+  if (sel3d) {
+    if (!drag) return;
+    // Orbit: drag right swings the camera left around the model; drag down raises it.
+    cam = { yaw: drag.px - (e.clientX - drag.x) * 0.5, pitch: Math.max(-90, Math.min(90, drag.py + (e.clientY - drag.y) * 0.5)) };
+    return drawSoon();
+  }
   if (drag) pan = { x: drag.px + e.clientX - drag.x, y: drag.py + e.clientY - drag.y };
   draw();
 });
@@ -427,14 +599,15 @@ window.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowRight") { play(false); setStep(step + 1); }
   else if (e.key === "Home") { play(false); setStep(0); }
   else if (e.key === "End") { play(false); setStep(Infinity); }
+  else if (e.key === "f" && sel3d) { cam = { yaw: 35, pitch: 25 }; zoom3d = 1; draw(); }
   else if (e.key === "f") { zoom = 0; pan = { x: 0, y: 0 }; draw(); }
   else if (e.key === "g") { const t = $<HTMLInputElement>("gridtog"); t.checked = !t.checked; draw(); }
   else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
     e.preventDefault();
-    const names = [...document.querySelectorAll<HTMLCanvasElement>("#assets canvas")].map((c) => c.dataset.name!);
-    const i = names.indexOf(sel ?? "");
-    const n = names[Math.max(0, Math.min(names.length - 1, i + (e.key === "ArrowUp" ? -1 : 1)))];
-    if (n) select(n);
+    const rows = [...document.querySelectorAll<HTMLCanvasElement>("#assets canvas")].map((c) => ({ name: c.dataset.name!, model: !!c.dataset.model }));
+    const i = rows.findIndex((r) => r.name === (sel3d ?? sel) && r.model === !!sel3d);
+    const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowUp" ? -1 : 1)))];
+    if (n) n.model ? select3d(n.name) : select(n.name);
   }
 });
 

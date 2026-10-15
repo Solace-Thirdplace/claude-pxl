@@ -62,6 +62,17 @@
   #pal span { width: 22px; height: 22px; border-radius: 4px; font: 10px var(--mono); display: grid; place-items: center; text-shadow: 0 0 3px #000, 0 0 2px #000; color: #fff; }
   kbd { font: 10px var(--mono); background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   .keys { padding: 8px 12px 12px; color: var(--dim); font-size: 11px; line-height: 1.9; }
+  #bar3d, #panel3d { display: none; }
+  body.mode3d #timeline, body.mode3d #stepinfo, body.mode3d .p2d { display: none; }
+  body.mode3d #bar3d { display: flex; }
+  body.mode3d #panel3d { display: block; }
+  body.mode3d #stage { cursor: grab; }
+  #bar3d { flex-wrap: wrap; gap: 6px; padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--line); }
+  #bar3d button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; font: 12px var(--mono); }
+  #bar3d button:hover { border-color: var(--accent); }
+  #panel3d .parts { padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
+  #panel3d .warn { margin: 0 12px; padding: 0; list-style: none; font: 11px/1.5 var(--mono); color: var(--accent); }
+  #panel3d .info { margin: 0 12px; font: 12px var(--mono); color: var(--dim); }
 </style>
 </head>
 <body>
@@ -95,15 +106,25 @@
     </select>
   </div>
   <div id="stepinfo">&nbsp;</div>
+  <div id="bar3d"></div>
 </main>
 <section id="side">
-  <h3>Painting steps</h3>
-  <ol id="steps"></ol>
-  <h3>Pixel</h3>
-  <div id="inspect">hover the image</div>
-  <h3>Palette</h3>
-  <div id="pal"></div>
-  <div class="keys"><kbd>space</kbd> play <kbd>←</kbd><kbd>→</kbd> step <kbd>↑</kbd><kbd>↓</kbd> asset <kbd>wheel</kbd> zoom <kbd>drag</kbd> pan <kbd>f</kbd> fit</div>
+  <h3 class="p2d">Painting steps</h3>
+  <ol id="steps" class="p2d"></ol>
+  <h3 class="p2d">Pixel</h3>
+  <div id="inspect" class="p2d">hover the image</div>
+  <h3 class="p2d">Palette</h3>
+  <div id="pal" class="p2d"></div>
+  <div class="keys p2d"><kbd>space</kbd> play <kbd>←</kbd><kbd>→</kbd> step <kbd>↑</kbd><kbd>↓</kbd> asset <kbd>wheel</kbd> zoom <kbd>drag</kbd> pan <kbd>f</kbd> fit</div>
+  <div id="panel3d">
+    <h3>Model</h3>
+    <div class="info" id="info3d"></div>
+    <h3>Parts</h3>
+    <div class="parts" id="parts3d"></div>
+    <h3>Warnings</h3>
+    <ul class="warn" id="warn3d"></ul>
+    <div class="keys"><kbd>drag</kbd> rotate <kbd>wheel</kbd> zoom <kbd>f</kbd> reset <kbd>↑</kbd><kbd>↓</kbd> asset</div>
+  </div>
 </section>
 <script type="module" src="/app.js"></script>
 </body>
