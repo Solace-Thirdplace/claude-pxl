@@ -163,7 +163,8 @@ export function render(quads: Quad[], cam: Camera, opts: RenderOpts = {}): Img {
           if (l0 < e || l1 < e || l2 < e) continue;
           const z = l0 * A[2] + l1 * B[2] + l2 * C[2];
           const i = y * w + x;
-          if (z <= zbuf[i] || seen[i] === qid) continue;
+          // Coplanar faces tie within float noise; the later quad wins, like the game's LEQUAL depth test.
+          if (z < zbuf[i] - 1e-3 || seen[i] === qid) continue;
           seen[i] = qid;
           // Clamp inside the face's texel rectangle so edge pixels never sample a neighbouring face.
           const u = Math.min(Math.max(l0 * ua[0] + l1 * ub[0] + l2 * uc[0], umin), umax - 1e-4);
@@ -180,7 +181,7 @@ export function render(quads: Quad[], cam: Camera, opts: RenderOpts = {}): Img {
     }
   }
   translucent.sort((a, b) => a.d - b.d || a.z - b.z);
-  for (const t of translucent) if (t.z > zbuf[t.i]) img.data[t.i] = blend(img.data[t.i], t.c);
+  for (const t of translucent) if (t.z >= zbuf[t.i] - 1e-3) img.data[t.i] = blend(img.data[t.i], t.c);
   return img;
 }
 
