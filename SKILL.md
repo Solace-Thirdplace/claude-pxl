@@ -13,6 +13,9 @@ parts, primitives, brushes and tilemaps. Needs Node ≥ 22.18. No install step.
 
 ## Workflow
 
+If `LOCAL.md` exists in this skill's directory, read it first: it holds host-specific setup (such as
+a hosted viewer to use instead of `pxl serve`) and overrides the steps below.
+
 1. Write `art.px.js` (start from the template below; examples in `examples/`).
 2. Build only what you're working on: `PXL build art.px.js --only slime,heart`
 3. **Look at it**: read `out/_preview/<name>.png` (upscaled, checkerboard = transparent, grid every
