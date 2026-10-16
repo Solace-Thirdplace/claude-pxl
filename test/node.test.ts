@@ -8,7 +8,9 @@ import { Img } from "../src/core/image.ts";
 import { pack } from "../src/core/color.ts";
 import { encodePng } from "../src/node/png.ts";
 import { main } from "../src/node/cli.ts";
+import { loadProject } from "../src/node/load.ts";
 import { serve } from "../src/node/server.ts";
+import { keys } from "./helpers.ts";
 
 function chunks(buf: Buffer): { type: string; data: Buffer; crcOk: boolean }[] {
   const out = [];
@@ -75,6 +77,22 @@ test("cli build reports per-asset errors and still writes the rest", async () =>
   try { assert.equal(await main(["build", file]), 1); } finally { console.error = err; console.log = log; }
   assert.ok(existsSync(join(dir, "out", "sprites", "good.png")));
   assert.ok(errors.some((e) => e.includes("a.px.js:3:1") && e.includes("unknown color key 'z'")), errors.join("\n"));
+});
+
+test("include: each file starts from the default palette, the includer's comes back after", () => {
+  // second's ramp for '8' conflicts with first's. Shared state would let first's ramp win in second.
+  const { dir, file } = tmpArt(`pal({ q: "#123456" })
+include("first.px.js")
+include("second.px.js")
+sprite("main_dot", "q")`);
+  writeFileSync(join(dir, "first.px.js"), `pal({ z: 3 })\nramps("28e")\nsprite("first_dot", "8", light())`);
+  writeFileSync(join(dir, "second.px.js"), `ramps("089")\nsprite("second_dot", "8", light())`);
+  const p = loadProject(file);
+  assert.equal(keys(p, "first_dot"), "e");
+  assert.equal(keys(p, "second_dot"), "9");
+  assert.ok(!p.assets.get("second_dot")!.pal.keys.has("z"), "first's pal() keys leaked into second");
+  assert.equal(keys(p, "main_dot"), "q");
+  assert.deepEqual(p.assets.get("main_dot")!.pal.ramps, []);
 });
 
 test("server: state, asset frames, rebuild on change", async () => {

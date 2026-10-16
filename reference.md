@@ -18,7 +18,9 @@ Coordinates are 0-based from the top-left. Sizes are `w, h`. Colors are a single
 | `ramps("kDdu", "kTtq")` | Light ramps, dark → light. `shade` steps a color left, `light` steps right. When a key is in several ramps, the first ramp wins. |
 
 Every asset keeps the palette that was active where it was defined, so files with different
-palettes can be included and stamped together.
+palettes can be included and stamped together. Each included file starts from the default
+palette with no ramps, as if built alone, and its `use`/`pal`/`ramps` calls end with it: the
+including file's palette is back in effect after `include()` returns.
 
 ## Assets
 
@@ -28,7 +30,7 @@ scene(name, { w, h, bg?, ... }, ...items)
 layer(name, layerOpts?, ...items)      // only as an item of a sprite or scene
 group(name, ["a", "b", "rock_*", ...])  // random pick per placement; repeat a name to weight it
 sheet(name, ["slime*", "heart", groupName], { cols?, pad? })
-include("other.px.js")                  // path relative to the current file
+include("other.px.js")                  // path relative to the current file; own palette (above)
 ```
 
 Names starting with `_` are **parts**: usable everywhere but not exported, and not matched by

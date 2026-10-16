@@ -260,7 +260,11 @@ export class Project implements BuildCtx {
     env.include = (path: unknown) => {
       if (typeof path !== "string") throw new PxError('include("other.px.js")', this.callerLoc());
       if (!this.includeHook) throw new PxError("include() is not available here", this.callerLoc());
-      this.includeHook(path);
+      // Each file gets its own palette: the included file starts from the default, as if built
+      // alone, and its use/pal/ramps calls don't carry back into the includer or later includes.
+      const pal = this.pal;
+      this.pal = Palette.builtin("pico8");
+      try { this.includeHook(path); } finally { this.pal = pal; }
     };
     env.rng = (seed?: number) => rng(seed);
 
